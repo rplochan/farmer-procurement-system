@@ -1,5 +1,6 @@
 const pool = require("../config/db");
 const generateToken = require("../utils/generateToken");
+const { sendWhatsApp } = require("./notification.service");
 
 async function createBooking(farmerId, slotId) {
   const client = await pool.connect();
@@ -64,7 +65,61 @@ async function createBooking(farmerId, slotId) {
 
     await client.query("COMMIT");
 
-    return bookingResult.rows[0];
+const booking = bookingResult.rows[0];
+
+try {
+  const notificationResult = await pool.query(
+    `SELECT
+       f.mobile,
+       f.name,
+       s.date,
+       s.start_time,
+       s.end_time,
+       pc.centre_name,
+       c.crop_name
+     FROM bookings b
+     JOIN farmers f ON f.farmer_id = b.farmer_id
+     JOIN slots s ON s.slot_id = b.slot_id
+     JOIN procurement_centres pc ON pc.centre_id = s.centre_id
+     JOIN crops c ON c.crop_id = s.crop_id
+     WHERE b.booking_id = $1`,
+    [booking.booking_id]
+  );
+
+  if (notificationResult.rows.length > 0) {
+    const farmer = notificationResult.rows[0];
+
+    const message = `
+✅ Booking Confirmed!
+
+Hello ${farmer.name},
+
+Your procurement slot has been successfully booked.
+
+🎫 Token: ${booking.token_number}
+🌾 Crop: ${farmer.crop_name}
+📅 Date: ${farmer.date}
+⏰ Time: ${farmer.start_time} - ${farmer.end_time}
+🏢 Centre: ${farmer.centre_name}
+
+Please arrive at the centre during your scheduled slot.
+
+Thank you,
+Farmer Procurement System
+`;
+
+    await sendWhatsApp(farmer.mobile, message);
+  }
+} catch (notificationError) {
+  // Booking is already successful, so don't fail the booking
+  // just because WhatsApp delivery failed.
+  console.error(
+    "Booking notification failed:",
+    notificationError.message
+  );
+}
+
+return booking;
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
