@@ -21,7 +21,23 @@ const sendWhatsApp = async (to, message) => {
     throw error;
   }
 };
+const sendSMS = async (to, message) => {
+  try {
+    const response = await client.messages.create({
+      from: process.env.TWILIO_PHONE_NUMBER,
+      to: to,
+      body: message,
+    });
+
+    console.log("SMS sent:", response.sid);
+    return response;
+  } catch (error) {
+    console.error("SMS sending failed:", error.message);
+    throw error;
+  }
+};
 
 module.exports = {
   sendWhatsApp,
+  sendSMS,
 };
